@@ -1,3 +1,7 @@
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -17,32 +21,34 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Prompt is required' });
   }
 
+  const GEMINI_API_KEY = 'AQ.Ab8RN6LtxTTzpp-c43ldHUFmlANlrUu7iZjXuCoJf_A9BrbAig';
+
   try {
     const response = await fetch(
-      'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer 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',
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputs: prompt,
-          parameters: { num_inference_steps: 25, guidance_scale: 7.5 }
+          contents: [{ parts: [{ text: prompt }] }]
         }),
       }
     );
 
+    const data = await response.json();
+
     if (!response.ok) {
-      if (response.status === 503) {
-        return res.status(503).json({ error: 'Model is loading, please wait 20 seconds and try again.' });
-      }
-      const errText = await response.text();
-      return res.status(response.status).json({ error: errText });
+      return res.status(response.status).json({ error: data.error?.message || 'Generation failed' });
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find(p => p.inlineData);
+
+    if (!imagePart) {
+      return res.status(500).json({ error: 'No image returned from API' });
+    }
+
+    const base64 = imagePart.inlineData.data;
 
     return res.status(200).json({ success: true, data: base64 });
   } catch (error) {
